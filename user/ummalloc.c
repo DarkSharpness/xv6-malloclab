@@ -44,7 +44,7 @@ void *mm_malloc(uint size) {
     size = ALIGN(size) + sizeof(struct pack);
     if (size <= 512) {
         return malloc_tiny(size);
-    } else if (size >= 65536) {
+    } else if (size > 4096) {
         return malloc_huge(size);
     } else {
         return malloc_middle(size);
