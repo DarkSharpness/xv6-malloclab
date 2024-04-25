@@ -1,6 +1,3 @@
-#ifndef _UMMALLOC_DECL_H
-#define _UMMALLOC_DECL_H
-
 #ifndef PAGE_SIZE
 #define PAGE_SIZE 4096
 #endif
@@ -32,70 +29,80 @@ enum Meta {
     FULL_MASK   = 0b111,
 };
 
-inline void pack_add_meta(struct pack *pack, enum Meta info) {
+static inline
+void pack_add_meta(struct pack *pack, enum Meta info) {
     pack->size |= info;
 }
 
-inline void pack_set_meta(struct pack *pack, enum Meta info) {
+static inline
+void pack_set_meta(struct pack *pack, enum Meta info) {
     pack->size = (pack->size & ~FULL_MASK) | info;
 }
 
-inline void pack_set_info(struct pack *pack, uint32_t size, enum Meta info) {
+static inline
+void pack_set_info(struct pack *pack, uint32_t size, enum Meta info) {
     pack->size = size | info;
 }
 
-inline void pack_set_prev(struct pack *pack, uint32_t size) {
+static inline
+void pack_set_prev(struct pack *pack, uint32_t size) {
     pack->prev = size;
 }
 
-inline void pack_set_size(struct pack *pack, uint32_t size) {
+static inline
+void pack_set_size(struct pack *pack, uint32_t size) {
     pack->size = (pack->size & FULL_MASK) | size;
 }
 
-inline uint32_t pack_size(struct pack *pack) {
+static inline
+uint32_t pack_size(struct pack *pack) {
     return pack->size & ~FULL_MASK;
 }
 
-inline struct pack *pack_prev(struct pack *pack) {
+static inline
+struct pack *pack_next(struct pack *pack) {
     uint32_t size = pack_size(pack);
     size_t   next = (size_t)pack + size;
     return (struct pack *)next;
 }
 
-inline struct pack *pack_prev(struct pack *pack) {
+static inline
+struct pack *pack_prev(struct pack *pack) {
     uint32_t size = pack->prev;
     size_t   prev = (size_t)pack - size;
     return (struct pack *)prev;
 }
 
-
-
-inline struct pack *list_pack(struct node *node) {
+static inline
+struct pack *list_pack(struct node *node) {
     return (struct pack *)((size_t)node - sizeof(struct pack));
 }
 
-inline void list_init(struct node *list) {
+static inline
+void list_init(struct node *list) {
     list->next = list->prev = list;
 }
 
-inline int list_empty(struct node *list) {
+static inline
+int list_empty(struct node *list) {
     return list->next == list;
 }
 
-inline void link(struct node *prev, struct node *next) {
+static inline
+void node_link(struct node *prev, struct node *next) {
     prev->next = next;
     next->prev = prev;
 }
 
-inline struct node *list_pop(struct node *list) {
+static inline
+struct node *list_pop(struct node *list) {
     struct node *node = list->next;
-    link(list, node->next);
+    node_link(list, node->next);
     return node;
 }
 
-inline void list_push(struct node *list, struct node *node) {
-    link(node, list->next);
-    link(list, node);
+static inline
+void list_push(struct node *list, struct node *node) {
+    node_link(node, list->next);
+    node_link(list, node);
 }
-
-#endif

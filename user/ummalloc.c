@@ -4,6 +4,36 @@
 #include "ummalloc_decl.h"
 #include "ummalloc_data.h"
 
+static inline void *
+malloc_tiny(size_t size) {
+    size_t index = size <= 32 ? 1 : (size - 1) / 16;
+    size = (index + 1) * 16; // Align to 16 bytes.
+
+    void *data = tiny_allocate(index, size);
+    if (data != (void *)0) return data;
+
+    return next_allocate(index, size);
+}
+
+static inline void *
+malloc_middle(size_t size) {
+    size_t index = size <= 640 ? (size + 1535) / 64 : 34 + (size - 513) / 256;
+
+    void *data = middle_allocate(index, size, 4);
+    if (data != (void *)0) return data;
+
+    return next_allocate(index, size);
+}
+
+void *malloc_huge(size_t size) {
+    size_t index = size < 6144 ? 48 : (size - 1) / 4096 + 48;
+
+    void *data = huge_allocate(index, size, 8);
+    if (data != (void *)0) return data;
+
+    return next_allocate(index, size);
+}
+
 int mm_init(void) {
     mm_list_init();
     mm_align_init();
@@ -12,31 +42,19 @@ int mm_init(void) {
 
 void *mm_malloc(uint size) {
     size = ALIGN(size) + sizeof(struct pack);
-
-    // Find the corresponding free list.
-    struct node *list = get_list(size);
-    if (list_empty(list)) {
-        return mm_alloc_brk(size);
+    if (size <= 512) {
+        return malloc_tiny(size);
+    } else if (size >= 65536) {
+        return malloc_huge(size);
     } else {
-        // struct pack *pack = list_pack(list_pop(list));
-        // struct pack *next = pack_prev(pack);
-        // pack_set_prev(next, size);
-        // pack_add_meta(next, PREV_INUSE);
-        // return pack->data;
+        return malloc_middle(size);
     }
 }
 
-void mm_free(void *ptr) {
-    struct node *node = (struct node *)(ptr);
-    struct pack *pack = list_pack(node);
-
-
-
-}
+void mm_free(void *) {}
 
 void *mm_realloc(void *ptr, uint size) {
-    if (size == 0) return mm_free(ptr), 0;
+    if (size == 0) return mm_free(ptr), (void *)0;
     if (ptr == 0) return mm_malloc(size);
-    // ptr != 0 && size != 0
-
+    return 0;
 }
