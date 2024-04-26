@@ -263,6 +263,7 @@ static inline void fast_bin_reserve(void) {
 /* Initialize all the lists. */
 static inline void mm_list_init(void) {
     for (size_t i = 0; i < 64; i++) list_init(&slots[i]);
+    list_init(&fast_full);
 }
 
 /* Align the top to 4096 and align the base to 8. */
