@@ -1,17 +1,26 @@
 #pragma once
 #include "ummalloc_data.h"
 
+#define TAIL 0x00 // The tail pack size is always 0.
+
 /**
  * @brief Allocate memory from a pack.
  * @param pack Pointer to the pack.
  * @param size Size of the pack.
  * @return Data pointer. Never return NULL.
+ * @attention The pack must have been taken out from the list.
+ * Therefore, the previous/next chunk is always inuse.
  */
 static inline void *
-pack_allocate(struct pack *pack, size_t size) {
+pack_allocate(struct pack *__restrict pack) {
+    size_t size = pack_size(pack);
+    pack_set_meta(pack, BOTH_INUSE);
+
     struct pack *next = pack_next(pack);
-    pack_set_prev(next, size);
-    pack_set_info(next, 0, PREV_INUSE);
+
+    pack_set_prev(next, size); // I'm not sure if this is necessary.
+    pack_add_meta(pack, PREV_INUSE);
+
     return pack->data;
 }
 
@@ -21,21 +30,36 @@ pack_allocate(struct pack *pack, size_t size) {
  * @param size Size of the pack.
  * @param need Required size.
  * @return Data pointer. nullptr if failed.
+ * @attention The pack must have been taken out from the list.
+ * Therefore, the previous/next chunk is always inuse.
 */
 static inline void *
-split_allocate(struct pack *pack, size_t size, size_t need) {
-    /// TODO: Implement the split allocation.
+split_allocate(struct pack *__restrict pack, size_t need) {
+    /**
+     * (prev) | size | (next)
+     *    ---> <split> --->
+     * (prev) | need | size - need | (next)
+    */
 
-    return pack_allocate(pack, size);
+    size_t rest = pack_size(pack) - need;
+    pack_set_prev(pack_next(pack), rest);
+    pack_set_info(pack, need, BOTH_INUSE);
+
+    struct pack *next = pack_next(pack);
+    pack_set_prev(next, need);
+    pack_set_info(next, rest, PREV_INUSE);
+    free_chunk(next);
+
+    return pack->data;
 }
 
 /** Just a wrapper function. */
 static inline void *
-try_split_allocate(struct pack *pack, size_t size, size_t need) {
-    if (size > need * 2)
-        return split_allocate(pack, size, need);
+try_split_allocate(struct pack *__restrict pack, size_t need) {
+    if (pack_size(pack) > need * 2)
+        return split_allocate(pack, need);
     else
-        return pack_allocate(pack, size);
+        return pack_allocate(pack);
 }
 
 static inline uint64_t
@@ -77,7 +101,7 @@ next_allocate(size_t index, size_t size) {
     struct node *node = list_extract(position);
     struct pack *pack = list_pack(node);
 
-    return try_split_allocate(pack, pack_size(pack), size);
+    return try_split_allocate(pack, size);
 }
 
 /**
@@ -87,8 +111,37 @@ next_allocate(size_t index, size_t size) {
  */
 static inline void *
 fast_allocate(void) {
-    /// TODO: Implement the fast allocation.
-    return 0;
+    struct node *list = slots + 1;
+    if (list_empty(list)) return (void *)0;
+    struct node *node = list->next;
+    struct pack *pack = list_pack(node);
+
+    size_t *map = (size_t *)(pack->data + sizeof(struct node));
+    size_t  mem = (size_t)(map + 3);    // Memory start address.
+    IMPOSSIBLE(map[0] == 0);
+
+    if (--map[0] == 0)
+        list_push(&fast_full, list_pop(list));
+
+    size_t index = 0;
+    if (map[1] != 0) {
+        size_t high = log2_floor64(map[1]);
+        map[1] &= ~(1 << high);
+        index = high;
+    } else if (map[2] != 0) {
+        size_t high = log2_floor64(map[2]);
+        map[2] &= ~(1 << high);
+        index = high + 64;
+    } else {
+        IMPOSSIBLE(1);
+        return (void *)0;
+    }
+
+    // The flag of next of size = 32 is meaningless.
+    struct pack *next = (struct pack *)(mem + index * 32);
+    pack_set_prev(next, index);
+    pack_set_info(next, 32, BOTH_INUSE);
+    return next->data;
 }
 
 /**
@@ -100,17 +153,17 @@ fast_allocate(void) {
  * @return Data pointer. nullptr if failed.
  */
 static inline void *
-tiny_allocate(size_t index, size_t need) {
+tiny_allocate(size_t index) {
     if (list_empty(slots + index)) return (void *)0;
     struct node *node = list_extract(index);
     struct pack *pack = list_pack(node);
-    return pack_allocate(pack, need);
+    return pack_allocate(pack);
 }
 
 /**
  * @brief Allocate memory from a middle slot.
  * Each node is dynamic-sized. The size ranges in
- * [512, 768] and (768, 4096), step by 64 and 256. 
+ * (512, 768] and (768, 4096], step by 64 and 256. 
  * @param index Index of the slot. Range: [32, 48)
  * @param need  Required size.
  * @param iteration Iteration of attempts.
@@ -136,7 +189,7 @@ middle_allocate(size_t index, size_t need, size_t iteration) {
             struct node *next = head->next;
             node_link(prev, next);
             if (prev == next) bitmap_clr(index);
-            return pack_allocate(pack, size);
+            return pack_allocate(pack);
         }
 
         head = head->next;
@@ -148,7 +201,7 @@ middle_allocate(size_t index, size_t need, size_t iteration) {
 /**
  * @brief Allocate memory from corresponding slot.
  * Each node is dynamic-sized. The size ranges in
- * [4096, 8192] and (8192, 65536], step by 2048 and 4096.
+ * (4096, 8192] and (8192, 65536], step by 2048 and 4096.
  * @param index Index of the slot.
  * @param size Required size.
  * @param iteration Iteration of attempes
@@ -162,17 +215,47 @@ middle_allocate(size_t index, size_t need, size_t iteration) {
  * can quickly return if we can't find a good fit.
  */
 static inline void *
-huge_allocate(size_t index, size_t size, size_t iteration) {
-    return malloc_brk(size);
+huge_allocate(size_t index, size_t need, size_t iteration) {
+    struct node *list = slots + index;
+    struct node *head = list->next;
+    while (iteration-- != 0 && head != list) {
+        struct pack *pack = list_pack(head);
+        size_t size = pack_size(pack);
+
+        if (size >= need) {
+            struct node *prev = head->prev;
+            struct node *next = head->next;
+            node_link(prev, next);
+            if (prev == next) bitmap_clr(index);
+            return pack_allocate(pack);
+        }
+
+        head = head->next;
+    }
+
+    return (void *)0;
 }
 
+static void *malloc_huge(size_t);
+
 /**
- * @brief There is no more fast bin to allocate.
- * So, we need a new page to be the new fast bin.
+ * @brief Reserve memory for fast bin.
  * @return 
  */
-static inline void *fast_bin_allocate(void) {
-    return 0;
+static inline void fast_bin_reserve(void) {
+    if (!list_empty(slots + 1)) return;
+
+    void *data = malloc_huge(4096 + 48);
+    struct node *node = (struct node *)data;
+
+    list_push(slots + 1, node);
+
+    struct pack *pack = list_pack(node);
+    
+    size_t *map = (size_t *)(pack->data + sizeof(struct node));
+    map[0] = 64 + 64;   // Count of available chunks.
+    map[1] = (size_t)(-1);
+    map[2] = (size_t)(-1);
 }
 
 
@@ -200,12 +283,16 @@ static inline void mm_align_init(void) {
     size = top - low;
 
     /* Regard previous memory of first part. as unreachable. */
-    struct node *head = (struct node *)low;
-    pack_set_info(list_pack(head), size, PREV_INUSE);
+    struct node *head = base;
+    struct pack *pack = list_pack(head);
+    pack_set_info(pack, size, PREV_INUSE);
 
     /* Regard the last part of memory as inuse. */
     struct node *tail = (struct node *)top;
-    pack_set_info(list_pack(tail), 0, THIS_INUSE);
+    struct pack *next = list_pack(tail);
+    pack_set_info(next, TAIL, THIS_INUSE);
+
+    return free_chunk(pack);
 }
 
 /* Allocate memory from the brk */
@@ -215,38 +302,42 @@ static inline void *malloc_brk(size_t need) {
     size_t page = (need + PAGE_SIZE - 1) / PAGE_SIZE;
     size_t size = page * PAGE_SIZE;
 
+    pack_set_size(pack, size);
+
     size_t heap = (size_t)(base);
     base = (struct node *)(heap + size);
 
-    if (sbrk(size) != (char *)heap) return 0; // Out of memory.
+    if (sbrk(size) == (char *)-1) return 0; // Out of memory.
 
-    /* split and allocate */
-    return try_split_allocate(pack, size, need);
+    struct pack *next = pack_next(pack);
+    pack_set_info(next, 0, THIS_INUSE);
+
+    return try_split_allocate(pack, need);
 }
 
 /** Input wrapper of different size. */
 
 
 static inline void *malloc_fast(void) {
-    void *data = fast_allocate();
-    if (data != (void *)0) return data;
-    return fast_bin_allocate();
+    fast_bin_reserve();
+    return fast_allocate();
 }
 
-static inline void *
-malloc_tiny(size_t size) {
-    if (size <= 32) return malloc_fast();
+static inline void *malloc_tiny(size_t size) {
+    if (size <= 32)
+        size = 32;
+        // return malloc_fast();
+
     size_t index = (size - 1) / 16;
     size = (index + 1) * 16; // Align to 16 bytes.
 
-    void *data = tiny_allocate(index, size);
+    void *data = tiny_allocate(index);
     if (data != (void *)0) return data;
 
     return next_allocate(index, size);
 }
 
-static inline void *
-malloc_middle(size_t size) {
+static inline void *malloc_middle(size_t size) {
     size_t index = size <= 640 ? (size + 1535) / 64 : 34 + (size - 513) / 256;
 
     void *data = middle_allocate(index, size, 4);
@@ -255,7 +346,7 @@ malloc_middle(size_t size) {
     return next_allocate(index, size);
 }
 
-void *malloc_huge(size_t size) {
+static inline void *malloc_huge(size_t size) {
     size_t index = size < 6144 ? 48 : (size - 1) / 4096 + 48;
 
     void *data = huge_allocate(index, size, 8);

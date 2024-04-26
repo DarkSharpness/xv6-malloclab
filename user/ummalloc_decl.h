@@ -7,8 +7,15 @@
 #define ALIGNMENT 8
 /* rounds up to the nearest multiple of ALIGNMENT */
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
-/* Used for optimization */
-#define UNREACHABLE(x) if (x) __builtin_unreachable()
+
+// /* Used for optimization */
+// #define IMPOSSIBLE(x) do { if(x) { __builtin_unreachable(); } } while(0)
+
+/* USED for debug only. */
+#ifndef IMPOSSIBLE
+#include "user/user.h"
+#define IMPOSSIBLE(x) do { if(x) { printf("\nImpossible!\n"); } exit(1); } while(0)
+#endif // IMPOSSIBLE
 
 typedef unsigned short      uint16_t;
 typedef unsigned int        uint32_t;
@@ -41,12 +48,24 @@ pack_add_meta(struct pack *pack, enum Meta info) {
 }
 
 static inline void
+pack_clr_meta(struct pack *pack, enum Meta info) {
+    pack->size &= ~info;
+}
+
+static inline void
 pack_set_meta(struct pack *pack, enum Meta info) {
     pack->size = (pack->size & ~FULL_MASK) | info;
 }
 
 static inline void
+pack_add_info(struct pack *pack, uint32_t size, enum Meta info) {
+    IMPOSSIBLE(size & FULL_MASK);
+    pack->size = size | info | (pack->size & FULL_MASK);
+}
+
+static inline void
 pack_set_info(struct pack *pack, uint32_t size, enum Meta info) {
+    IMPOSSIBLE(size & FULL_MASK);
     pack->size = size | info;
 }
 
@@ -57,6 +76,7 @@ pack_set_prev(struct pack *pack, uint32_t size) {
 
 static inline void
 pack_set_size(struct pack *pack, uint32_t size) {
+    IMPOSSIBLE(size & FULL_MASK);
     pack->size = (pack->size & FULL_MASK) | size;
 }
 
@@ -89,8 +109,8 @@ list_init(struct node *list) {
     list->next = list->prev = list;
 }
 
-static inline
-int list_empty(struct node *list) {
+static inline int
+list_empty(struct node *list) {
     return list->next == list;
 }
 
@@ -111,4 +131,9 @@ static inline void
 list_push(struct node *list, struct node *node) {
     node_link(node, list->next);
     node_link(list, node);
+}
+
+static inline void
+list_erase(struct node *node) {
+    node_link(node->prev, node->next);
 }

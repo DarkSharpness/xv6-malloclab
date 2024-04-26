@@ -38,11 +38,13 @@
 #include "user/user.h"
 #include "ummalloc_decl.h"
 
-/** @return the ceil of log2(x). */
-static inline size_t
-log2_ceil64(size_t x) {
+/**
+ * @brief Calculate the ceil of log2(x).
+ * @example
+ *  63 -> 6, 64 -> 6, 65 -> 7, 0 -> 64
+*/
+static inline size_t log2_ceil64(size_t x) {
     x = x - 1;
-
     size_t t = 0, p = 0;
 
     p = (x >> 32 != 0) << 5;
@@ -64,8 +66,19 @@ log2_ceil64(size_t x) {
     return t + x + (x < 3) - 1;
 }
 
-struct node *base; // Base address of the heap.
+
+/**
+ * @brief Calculate the floor of log2(x).
+ * @example
+ *  1 -> 0, 2 -> 1, 3 -> 1, 4 -> 2
+*/
+static inline size_t log2_floor64(size_t x) {
+    return log2_ceil64(x + 1) - 1;
+}
+
+struct node *base;      // Base address of the heap.
 uint64_t    bitmap;     // Bitmap for all slots.
+struct node fast_full;  // Fast slot for those full.
 struct node slots[64];  // 64 slots for different size.
 
 static void *malloc_brk(size_t);
