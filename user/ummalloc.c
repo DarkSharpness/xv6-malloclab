@@ -1,38 +1,7 @@
 #include "kernel/types.h"
 #include "user/user.h"
 #include "ummalloc.h"
-#include "ummalloc_decl.h"
-#include "ummalloc_data.h"
-
-static inline void *
-malloc_tiny(size_t size) {
-    size_t index = size <= 32 ? 1 : (size - 1) / 16;
-    size = (index + 1) * 16; // Align to 16 bytes.
-
-    void *data = tiny_allocate(index, size);
-    if (data != (void *)0) return data;
-
-    return next_allocate(index, size);
-}
-
-static inline void *
-malloc_middle(size_t size) {
-    size_t index = size <= 640 ? (size + 1535) / 64 : 34 + (size - 513) / 256;
-
-    void *data = middle_allocate(index, size, 4);
-    if (data != (void *)0) return data;
-
-    return next_allocate(index, size);
-}
-
-void *malloc_huge(size_t size) {
-    size_t index = size < 6144 ? 48 : (size - 1) / 4096 + 48;
-
-    void *data = huge_allocate(index, size, 8);
-    if (data != (void *)0) return data;
-
-    return next_allocate(index, size);
-}
+#include "ummalloc_impl.h"
 
 int mm_init(void) {
     mm_list_init();
