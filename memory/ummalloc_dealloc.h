@@ -32,6 +32,15 @@ static inline void free_chunk(struct pack *pack) {
     bitmap |= 1ull << index;
 }
 
+static inline void
+try_safe_remove(struct node *node, struct pack *pack) {
+    struct node *prev = node->prev;
+    struct node *next = node->next;
+    node_link(prev, next);
+    if (prev == next)
+        bitmap_clr(get_index(pack_size(pack)));
+}
+
 
 /**
  * @brief Try to merge a chunk with its previous chunk.
@@ -49,10 +58,10 @@ try_merge_prev(struct pack * __restrict pack) {
     size_t size = pack_size(pack);
     struct pack *prev = pack_prev(pack);
 
-    IMPOSSIBLE(!(pack_meta(prev) & PREV_INUSE));
+    struct node *node = (struct node *)prev->data;
 
+    try_safe_remove(node, prev);
     prev_add_size(prev, size);
-
     struct pack *next = pack_next(prev);
     pack_set_prev(next, pack_size(prev));
 

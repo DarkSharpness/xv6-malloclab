@@ -85,3 +85,35 @@ static void *malloc_brk(size_t);
 static void  free_chunk(struct pack *);
 static struct pack *try_merge_prev(struct pack * __restrict);
 static struct pack *try_merge_next(struct pack * __restrict);
+
+static inline uint64_t next_free(size_t size) {
+    uint64_t mask = bitmap;
+    uint64_t temp = -1;
+    mask &= temp << (size + 1);
+    return mask & (-mask);
+}
+
+static inline void bitmap_set(size_t index) { bitmap |= 1ull << index; }
+static inline void bitmap_clr(size_t index) { bitmap &= ~(1ull << index); }
+
+/** Safely remove a node from the list. */
+static inline void
+safe_remove(struct node *__restrict node, size_t index) {
+    struct node *prev = node->prev;
+    struct node *next = node->next;
+    node_link(prev, next);
+    if (prev == next) bitmap_clr(index);
+}
+
+static inline size_t get_index(size_t size) {
+    size_t index = 0;
+    if (size <= 256) {
+        IMPOSSIBLE(size <= 32);
+        index = (size - 1) / 16;
+    } else if (size > 4096) {
+        index = size < 6144 ? 48 : (size - 1) / 4096 + 48;
+    } else {
+        index = size <= 640 ? (size + 1535) / 64 : 34 + (size - 513) / 256;
+    }
+    return index;
+}
