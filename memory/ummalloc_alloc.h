@@ -1,7 +1,8 @@
 #pragma once
 #include "ummalloc_data.h"
 
-#define TAIL 0x00 // The tail pack size is always 0.
+#define HEAD 114514 // The head pack size is always invalid.
+#define TAIL 000000 // The tail pack size is always invalid.
 
 /**
  * @brief Allocate memory from a pack.
@@ -71,10 +72,10 @@ next_free(size_t size) {
 }
 
 static inline void
-bitmap_set(size_t index) { bitmap |= 1 << index; }
+bitmap_set(size_t index) { bitmap |= 1ull << index; }
 
 static inline void
-bitmap_clr(size_t index) { bitmap &= ~(1 << index); }
+bitmap_clr(size_t index) { bitmap &= ~(1ull << index); }
 
 /* Safely remove the first node from the list. */
 static inline struct node *
@@ -126,11 +127,11 @@ fast_allocate(void) {
     size_t index = 0;
     if (map[1] != 0) {
         size_t high = log2_floor64(map[1]);
-        map[1] &= ~(1 << high);
+        map[1] &= ~(1ull << high);
         index = high;
     } else if (map[2] != 0) {
         size_t high = log2_floor64(map[2]);
-        map[2] &= ~(1 << high);
+        map[2] &= ~(1ull << high);
         index = high + 64;
     } else {
         IMPOSSIBLE(1);
@@ -280,17 +281,20 @@ static inline void mm_align_init(void) {
     size_t top = heap + size;
     size_t low = ALIGN(heap) + sizeof(struct pack);
 
-    base = (struct node *)low;
+    base = (struct node *)top;
     size = top - low;
 
     /* Regard previous memory of first part. as unreachable. */
-    struct node *head = base;
+    struct node *head = (struct node *)(low);
     struct pack *pack = list_pack(head);
+
+    pack_set_prev(pack, HEAD);
     pack_set_info(pack, size, PREV_INUSE);
 
     /* Regard the last part of memory as inuse. */
     struct node *tail = (struct node *)top;
     struct pack *next = list_pack(tail);
+    pack_set_prev(next, size);
     pack_set_info(next, TAIL, THIS_INUSE);
 
     return free_chunk(pack);
@@ -326,8 +330,8 @@ static inline void *malloc_fast(void) {
 
 static inline void *malloc_tiny(size_t size) {
     if (size <= 32)
-        size = 32;
-        // return malloc_fast();
+        // size = 32;
+        return malloc_fast();
 
     size_t index = (size - 1) / 16;
     size = (index + 1) * 16; // Align to 16 bytes.

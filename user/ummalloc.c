@@ -1,7 +1,6 @@
 #include "kernel/types.h"
 #include "user/user.h"
-#include "ummalloc.h"
-#include "ummalloc_impl.h"
+#include "../memory/ummalloc_impl.h"
 
 int mm_init(void) {
     mm_list_init();
