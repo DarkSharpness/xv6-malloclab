@@ -20,7 +20,7 @@ pack_allocate(struct pack *__restrict pack) {
     struct pack *next = pack_next(pack);
 
     pack_set_prev(next, size); // I'm not sure if this is necessary.
-    pack_add_meta(pack, PREV_INUSE);
+    pack_add_meta(next, PREV_INUSE);
 
     return pack->data;
 }
