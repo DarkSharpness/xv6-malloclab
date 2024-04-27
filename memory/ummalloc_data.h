@@ -83,3 +83,5 @@ struct node slots[64];  // 64 slots for different size.
 
 static void *malloc_brk(size_t);
 static void  free_chunk(struct pack *);
+static struct pack *try_merge_prev(struct pack * __restrict);
+static struct pack *try_merge_next(struct pack * __restrict);

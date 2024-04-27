@@ -9,8 +9,8 @@
  * @param pack Pointer to the pack.
  * @param size Size of the pack.
  * @return Data pointer. Never return NULL.
- * @attention The pack must have been taken out from the list.
- * Therefore, the previous/next chunk is always inuse.
+ * @attention Both prev/next chunks should be in use.
+ * This chunk should have been taken out of the list.
  */
 static inline void *
 pack_allocate(struct pack *__restrict pack) {
@@ -31,33 +31,45 @@ pack_allocate(struct pack *__restrict pack) {
  * @param size Size of the pack.
  * @param need Required size.
  * @return Data pointer. nullptr if failed.
- * @attention The pack must have been taken out from the list.
- * Therefore, the previous/next chunk is always inuse.
+ * @attention Both prev/next chunks should be in use.
+ * This chunk should have been taken out of the list.
 */
 static inline void *
 split_allocate(struct pack *__restrict pack, size_t need) {
     /**
      * (prev) | size | (next)
      *    ---> <split> --->
-     * (prev) | need | size - need | (next)
+     * (prev) | (need) | size - need | (next)
     */
 
     size_t rest = pack_size(pack) - need;
-    pack_set_prev(pack_next(pack), rest);
+    struct pack *next = pack_next(pack);
+    pack_set_prev(next, rest);
+    pack_set_meta(next, THIS_INUSE);
     pack_set_info(pack, need, BOTH_INUSE);
 
-    struct pack *next = pack_next(pack);
-    pack_set_prev(next, need);
-    pack_set_info(next, rest, PREV_INUSE);
-    free_chunk(next);
+    /* temp is the newly generated chunk. */
+    struct pack *temp = pack_next(pack);
+    pack_set_prev(temp, need);
+    pack_set_info(temp, rest, PREV_INUSE);
+
+    free_chunk(temp);
 
     return pack->data;
 }
 
-/** Just a wrapper function. */
+/**
+ * @brief A wrapper function to allocate memory from a pack.
+ * @attention 
+ * We require that this chunk be taken out of the linked list.
+ * We utilize the fact that both prev and next chunks are in use.
+ * We will automatically set the bit flags for this and next chunk.
+*/
 static inline void *
 try_split_allocate(struct pack *__restrict pack, size_t need) {
-    if (pack_size(pack) > need * 2)
+    size_t size = pack_size(pack);
+    size_t rest = size - need;
+    if (rest >= need || rest >= 512)
         return split_allocate(pack, need);
     else
         return pack_allocate(pack);
@@ -317,11 +329,10 @@ static inline void *malloc_brk(size_t need) {
     struct pack *next = pack_next(pack);
     pack_set_info(next, 0, THIS_INUSE);
 
-    return try_split_allocate(pack, need);
+    return try_split_allocate(try_merge_prev(pack), need);
 }
 
 /** Input wrapper of different size. */
-
 
 static inline void *malloc_fast(void) {
     fast_bin_reserve();

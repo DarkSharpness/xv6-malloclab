@@ -80,6 +80,12 @@ pack_set_size(struct pack *pack, uint32_t size) {
     pack->size = (pack->size & FULL_MASK) | size;
 }
 
+static inline void
+prev_add_size(struct pack *pack, uint32_t size) {
+    IMPOSSIBLE(size & FULL_MASK);
+    pack->size += size;
+}
+
 static inline uint32_t
 pack_size(struct pack *pack) {
     return pack->size & ~FULL_MASK;
@@ -97,6 +103,11 @@ pack_prev(struct pack *pack) {
     uint32_t size = pack->prev;
     size_t   prev = (size_t)pack - size;
     return (struct pack *)prev;
+}
+
+static inline enum Meta
+pack_meta(struct pack *pack) {
+    return pack->size & FULL_MASK;
 }
 
 static inline struct pack *

@@ -2,10 +2,7 @@
 #include "ummalloc_data.h"
 
 /**
- * @brief Free a chunk whose both previous
- * and next chunks are not free.
- * 
- * 
+ * @brief Free a chunk whose both prev and next chunks are not free.
  * @param pack Chunk to be freed.
  * @attention
  * PREV_INUSE of next chunk should have been set to 0.
@@ -14,6 +11,9 @@
  * THIS_INUSE of this chunk should have been set to 0.
  */
 static inline void free_chunk(struct pack *pack) {
+    IMPOSSIBLE(pack_meta(pack)            != PREV_INUSE);
+    IMPOSSIBLE(pack_meta(pack_next(pack)) != THIS_INUSE);
+
     size_t size = pack_size(pack);
     size_t index = 0;
     if (size <= 256) {
@@ -30,4 +30,31 @@ static inline void free_chunk(struct pack *pack) {
     list_push(list, node);
 
     bitmap |= 1ull << index;
+}
+
+
+/**
+ * @brief Try to merge a chunk with its previous chunk.
+ * @param pack Chunk to be merged.
+ * @return Pack of the merged chunk.
+ * @attention First, the pack must be out of any list.
+ * In addition, next chunk of current chunk must be in use.
+ * Also, bit flags of the merged chunk will be unchanged.
+ */
+static inline struct pack *
+try_merge_prev(struct pack * __restrict pack) {
+    enum Meta meta = pack_meta(pack);
+    if (meta & PREV_INUSE) return pack;
+
+    size_t size = pack_size(pack);
+    struct pack *prev = pack_prev(pack);
+
+    IMPOSSIBLE(!(pack_meta(prev) & PREV_INUSE));
+
+    prev_add_size(prev, size);
+
+    struct pack *next = pack_next(prev);
+    pack_set_prev(next, pack_size(prev));
+
+    return prev;
 }
