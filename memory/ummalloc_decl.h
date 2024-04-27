@@ -14,7 +14,7 @@
 /* USED for debug only. */
 #ifndef IMPOSSIBLE
 #include "user/user.h"
-#define IMPOSSIBLE(x) do { if(x) { printf("\nImpossible!\n"); } exit(1); } while(0)
+#define IMPOSSIBLE(x) do { if(x) { printf("\nImpossible!\n"); exit(1); } } while(0)
 #endif // IMPOSSIBLE
 
 typedef unsigned short      uint16_t;
