@@ -107,7 +107,7 @@ safe_remove(struct node *__restrict node, size_t index) {
 
 static inline size_t get_index(size_t size) {
     size_t index = 0;
-    if (size <= 256) {
+    if (size <= 512) {
         IMPOSSIBLE(size <= 32);
         index = (size - 1) / 16;
     } else if (size > 4096) {

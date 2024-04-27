@@ -15,15 +15,7 @@ static inline void free_chunk(struct pack *pack) {
     IMPOSSIBLE(pack_meta(pack_next(pack)) != THIS_INUSE);
 
     size_t size = pack_size(pack);
-    size_t index = 0;
-    if (size <= 256) {
-        IMPOSSIBLE(size <= 32);
-        index = (size - 1) / 16;
-    } else if (size > 4096) {
-        index = size < 6144 ? 48 : (size - 1) / 4096 + 48;
-    } else {
-        index = size <= 640 ? (size + 1535) / 64 : 34 + (size - 513) / 256;
-    }
+    size_t index = get_index(size);
 
     struct node *list = &slots[index];
     struct node *node = (struct node *)pack->data;
